@@ -1,55 +1,70 @@
-CREATE VIEW vw_propiedades_resumen AS
+USE db_proyecto;
+
+
+CREATE VIEW catalogo_propiedades AS
 SELECT
-    pr.id_propiedad,
-    pr.direccion,
-    pr.precio,
+    p.id_propiedad,
+    p.direccion,
+    FORMAT(p.precio, 0) AS precio_formateado,
     tp.nombre AS tipo,
     ep.nombre AS estado,
-    cd.nombre AS ciudad
-FROM tipo_propiedad tp
-INNER JOIN propiedad pr
-    ON tp.id_tipo_propiedad = pr.id_tipo_propiedad
-INNER JOIN estado_propiedad ep
-    ON pr.id_estado_propiedad = ep.id_estado_propiedad
-INNER JOIN ciudad cd
-    ON pr.id_ciudad = cd.id_ciudad;
+    c.nombre AS ciudad,
+    CASE
+        WHEN co.id_contrato IS NOT NULL THEN 'Si'
+        ELSE 'No'
+    END AS tiene_contrato,
+    COALESCE(CONCAT(pa.nombre, ' ', pa.apellido), 'Sin asignar') AS agente_asignado
+FROM propiedad p
+INNER JOIN tipo_propiedad tp ON p.id_tipo_propiedad = tp.id_tipo_propiedad
+INNER JOIN estado_propiedad ep ON p.id_estado_propiedad = ep.id_estado_propiedad
+INNER JOIN ciudad c ON p.id_ciudad = c.id_ciudad
+LEFT JOIN contrato co ON p.id_propiedad = co.propiedad_id
+LEFT JOIN personas pa ON co.agente_id = pa.id_persona;
 
 
-CREATE VIEW vw_detalle_contratos AS
+CREATE VIEW resumen_contratos AS
 SELECT
-    ct.id_contrato,
-    pr.direccion AS inmueble,
-    CONCAT(pc.nombre, ' ', pc.apellido) AS nombre_cliente,
-    CONCAT(pa.nombre, ' ', pa.apellido) AS nombre_agente,
-    ct.fecha_inicio,
-    ct.total
-FROM contrato ct
-INNER JOIN propiedad pr
-    ON ct.propiedad_id = pr.id_propiedad
-INNER JOIN cliente cl
-    ON ct.cliente_id = cl.id_cliente
-INNER JOIN personas pc
-    ON cl.id_cliente = pc.id_persona
-INNER JOIN agente ag
-    ON ct.agente_id = ag.id_agente
-INNER JOIN personas pa
-    ON ag.id_agente = pa.id_persona;
-
-
-CREATE VIEW vw_estado_financiero_contratos AS
-SELECT
-    ct.id_contrato,
-    ct.total AS valor_contrato,
-    COALESCE(pg.total_pagado, 0) AS total_pagado,
-    ct.total - COALESCE(pg.total_pagado, 0) AS saldo_pendiente
-FROM contrato ct
+    co.id_contrato,
+    tc.nombre AS modalidad,
+    p.direccion AS propiedad,
+    CONCAT(pc.nombre, ' ', pc.apellido) AS cliente,
+    CONCAT(pa.nombre, ' ', pa.apellido) AS agente,
+    co.fecha_inicio,
+    co.fecha_fin,
+    co.total,
+    DATEDIFF(co.fecha_fin, CURRENT_DATE) AS dias_restantes,
+    COALESCE(pagos.pagado, 0) AS total_pagado,
+    ROUND(COALESCE(pagos.pagado, 0) / co.total * 100, 1) AS porcentaje_pagado
+FROM contrato co
+INNER JOIN tipo_contrato tc ON co.tipo_contrato_id = tc.id_tipo_contrato
+INNER JOIN propiedad p ON co.propiedad_id = p.id_propiedad
+INNER JOIN personas pc ON co.cliente_id = pc.id_persona
+INNER JOIN personas pa ON co.agente_id = pa.id_persona
 LEFT JOIN (
-    SELECT
-        f.contrato_id,
-        SUM(p.monto) AS total_pagado
-    FROM factura f
-    LEFT JOIN pago p
-        ON f.id_factura = p.factura_id
+    SELECT f.contrato_id, SUM(pg.monto) AS pagado
+    FROM pago pg
+    INNER JOIN factura f ON pg.factura_id = f.id_factura
+    WHERE pg.monto > 0
     GROUP BY f.contrato_id
-) pg
-ON ct.id_contrato = pg.contrato_id;
+) pagos ON co.id_contrato = pagos.contrato_id;
+
+
+CREATE VIEW estado_financiero AS
+SELECT
+    co.id_contrato,
+    co.total AS valor_total,
+    COALESCE(pagos.total_pagado, 0) AS pagado,
+    co.total - COALESCE(pagos.total_pagado, 0) AS pendiente,
+    CASE
+        WHEN co.total - COALESCE(pagos.total_pagado, 0) <= 0 THEN 'Al dia'
+        WHEN co.total - COALESCE(pagos.total_pagado, 0) < co.total * 0.5 THEN 'Deuda baja'
+        ELSE 'Deuda alta'
+    END AS clasificacion
+FROM contrato co
+LEFT JOIN (
+    SELECT f.contrato_id, SUM(pg.monto) AS total_pagado
+    FROM pago pg
+    INNER JOIN factura f ON pg.factura_id = f.id_factura
+    WHERE pg.monto > 0
+    GROUP BY f.contrato_id
+) pagos ON co.id_contrato = pagos.contrato_id;

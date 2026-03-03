@@ -155,38 +155,28 @@ Se garantiza integridad referencial mediante claves foráneas y se implementa au
 ---
 
 ## Ejemplos de Consultas
-##### Consultar todas las propiedades
-SELECT * FROM vw_propiedades_resumen;
+-- Propiedades disponibles por tipo
+SELECT disponibles_por_tipo(1) AS casas_disponibles;
+SELECT disponibles_por_tipo(2) AS apartamentos_disponibles;
+SELECT disponibles_por_tipo(3) AS locales_disponibles;
 
-##### Consultar detalle de contratos
-SELECT * FROM vw_detalle_contratos;
+-- Catalogo de propiedades con agente asignado
+SELECT * FROM catalogo_propiedades;
 
-##### Consultar estado financiero de contratos
-SELECT * FROM vw_estado_financiero_contratos;
+-- Contratos con dias restantes y porcentaje pagado
+SELECT * FROM resumen_contratos;
 
-##### Calcular comisión de un agente
-SELECT fn_obtener_comision_agente(1);
+-- Estado financiero con clasificacion de deuda
+SELECT * FROM estado_financiero;
 
-##### Calcular deuda de un contrato
-SELECT fn_deuda_contrato(2);
+-- Registrar propiedad con validaciones
+CALL registrar_propiedad_segura('Calle 50 #10-20', 280000000.00, 1, 1, 1);
 
-##### Contar propiedades disponibles por tipo
-SELECT fn_total_propiedades_libres(1);
+-- Bitacora de actividad
+SELECT * FROM logs ORDER BY fecha_registro DESC;
 
-##### Ver registros de auditoría (logs del sistema)
-SELECT * FROM logs;
+-- Errores capturados
+SELECT * FROM logs_error ORDER BY fecha_registro DESC;
 
-##### Ver registros de errores controlados
-SELECT * FROM logs_error;
-
-##### Probar el procedimiento de inserción controlada
-CALL registrar_propiedad(
-    'Nueva Dirección 123',
-    500000000.00,
-    1,
-    1,
-    1
-);
-
-##### Ver reporte mensual generado por el evento
-SELECT * FROM reporte_mensual;
+-- Reporte mensual de deudas
+SELECT * FROM reporte_pagos_mensual;

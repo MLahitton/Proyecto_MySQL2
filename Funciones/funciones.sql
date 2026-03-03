@@ -1,86 +1,99 @@
-DELIMITER $$
+USE db_proyecto;
 
-CREATE FUNCTION fn_obtener_comision_agente (
-    p_contrato INT
-)
+DELIMITER //
+
+
+CREATE FUNCTION calcular_comision(p_id_contrato INT)
 RETURNS DECIMAL(12,2)
 DETERMINISTIC
 BEGIN
-    DECLARE monto_total DECIMAL(12,2);
-    DECLARE porcentaje DECIMAL(5,2);
-
-    IF NOT EXISTS (
-        SELECT 1
-        FROM contrato
-        WHERE id_contrato = p_contrato
-    ) THEN
-        SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = 'Contrato no existe';
-    END IF;
+    DECLARE valor_contrato DECIMAL(12,2) DEFAULT 0;
+    DECLARE pct_agente DECIMAL(5,2) DEFAULT 0;
+    DECLARE pct_final DECIMAL(5,2) DEFAULT 0;
 
     SELECT c.total, a.comision
-    INTO monto_total, porcentaje
+    INTO valor_contrato, pct_agente
     FROM contrato c
-    INNER JOIN agente a
-        ON c.agente_id = a.id_agente
-    WHERE c.id_contrato = p_contrato;
+    INNER JOIN agente a ON c.agente_id = a.id_agente
+    WHERE c.id_contrato = p_id_contrato;
 
-    RETURN monto_total * porcentaje / 100;
-END$$
+    IF valor_contrato IS NULL THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'El contrato indicado no existe';
+    END IF;
 
-DELIMITER ;
+    SET pct_final = CASE
+        WHEN pct_agente > 10.00 THEN 10.00
+        ELSE pct_agente
+    END;
+
+    RETURN ROUND(valor_contrato * pct_final / 100, 2);
+END //
 
 
-DELIMITER $$
 
-CREATE FUNCTION fn_deuda_contrato (
-    p_contrato_id INT
-)
+
+CREATE FUNCTION calcular_deuda(p_id_contrato INT)
 RETURNS DECIMAL(12,2)
 DETERMINISTIC
 BEGIN
-    DECLARE total_contrato DECIMAL(12,2);
-    DECLARE total_pagado DECIMAL(12,2);
+    DECLARE existe INT DEFAULT 0;
+    DECLARE deuda_total DECIMAL(12,2) DEFAULT 0;
+    DECLARE valor_contrato DECIMAL(12,2) DEFAULT 0;
+    DECLARE total_pagado DECIMAL(12,2) DEFAULT 0;
 
-    SELECT total
-    INTO total_contrato
+    SELECT COUNT(*) INTO existe
     FROM contrato
-    WHERE id_contrato = p_contrato_id;
+    WHERE id_contrato = p_id_contrato;
 
-    IF total_contrato IS NULL THEN
+    IF existe = 0 THEN
         SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = 'Contrato no válido';
+        SET MESSAGE_TEXT = 'No se encontro el contrato';
     END IF;
 
-    SELECT COALESCE(SUM(p.monto), 0)
-    INTO total_pagado
+    SELECT total INTO valor_contrato
+    FROM contrato
+    WHERE id_contrato = p_id_contrato;
+
+    SELECT COALESCE(SUM(p.monto), 0) INTO total_pagado
     FROM pago p
-    WHERE p.factura_id IN (
-        SELECT f.id_factura
-        FROM factura f
-        WHERE f.contrato_id = p_contrato_id
-    );
+    INNER JOIN factura f ON p.factura_id = f.id_factura
+    WHERE f.contrato_id = p_id_contrato
+    AND p.monto > 0;
 
-    RETURN total_contrato - total_pagado;
-END$$
+    SET deuda_total = valor_contrato - total_pagado;
 
-DELIMITER ;
+    IF deuda_total < 0 THEN
+        SET deuda_total = 0;
+    END IF;
+
+    RETURN deuda_total;
+END //
 
 
-DELIMITER $$
 
-CREATE FUNCTION fn_total_propiedades_libres (
-    p_tipo_propiedad INT
-)
+CREATE FUNCTION disponibles_por_tipo(p_tipo INT)
 RETURNS INT
 DETERMINISTIC
 BEGIN
-    RETURN (
-        SELECT COUNT(*)
-        FROM propiedad pr
-        WHERE pr.id_tipo_propiedad = p_tipo_propiedad
-        AND pr.id_estado_propiedad = 1
-    );
-END$$
+    DECLARE tipo_existe INT DEFAULT 0;
+    DECLARE cantidad INT DEFAULT 0;
+
+    SELECT COUNT(*) INTO tipo_existe
+    FROM tipo_propiedad
+    WHERE id_tipo_propiedad = p_tipo;
+
+    IF tipo_existe = 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'El tipo de propiedad no existe en el catalogo';
+    END IF;
+
+    SELECT COUNT(*) INTO cantidad
+    FROM propiedad
+    WHERE id_tipo_propiedad = p_tipo
+    AND id_estado_propiedad = 1;
+
+    RETURN cantidad;
+END //
 
 DELIMITER ;

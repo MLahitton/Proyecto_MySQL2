@@ -1,28 +1,48 @@
+USE db_proyecto;
+
 DELIMITER //
 
-CREATE PROCEDURE sp_registrar_log(
+
+CREATE PROCEDURE escribir_log(
     IN p_tabla VARCHAR(45),
-    IN p_procedimiento VARCHAR(45),
-    IN p_accion VARCHAR(45),
-    IN p_descripcion TEXT
+    IN p_origen VARCHAR(45),
+    IN p_tipo_accion VARCHAR(45),
+    IN p_detalle TEXT
 )
 BEGIN
     INSERT INTO logs (tabla_afectada, procedimiento, accion, descripcion, fecha_registro)
-    VALUES (p_tabla, p_procedimiento, p_accion, p_descripcion, NOW());
+    VALUES (
+        p_tabla,
+        p_origen,
+        p_tipo_accion,
+        CONCAT('[', CURRENT_USER(), '] ', p_detalle),
+        NOW()
+    );
 END //
 
-DELIMITER ;
 
 
-
-
-DELIMITER //
-
-CREATE TRIGGER trg_insert_propiedad
+CREATE TRIGGER al_registrar_propiedad
 AFTER INSERT ON propiedad
 FOR EACH ROW
 BEGIN
-    CALL sp_registrar_log('propiedad', 'trg_insert_propiedad', 'INSERT', CONCAT('Nueva propiedad ID: ', NEW.id_propiedad));
+    DECLARE nombre_ciudad VARCHAR(45);
+
+    SELECT nombre INTO nombre_ciudad
+    FROM ciudad
+    WHERE id_ciudad = NEW.id_ciudad;
+
+    CALL escribir_log(
+        'propiedad',
+        'al_registrar_propiedad',
+        'INSERT',
+        CONCAT(
+            'Nueva propiedad en ', COALESCE(nombre_ciudad, 'ciudad desconocida'),
+            ': "', NEW.direccion, '"',
+            ' | Precio: $', FORMAT(NEW.precio, 0),
+            ' | ID: ', NEW.id_propiedad
+        )
+    );
 END //
 
 DELIMITER ;

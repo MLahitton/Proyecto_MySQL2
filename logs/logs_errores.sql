@@ -1,62 +1,69 @@
-DELIMITER $$
+USE db_proyecto;
 
-CREATE PROCEDURE registrar_propiedad (
-    IN v_direccion VARCHAR(100),
-    IN v_precio DECIMAL(15,2),
-    IN v_tipo_propiedad INT,
-    IN v_estado_propiedad INT,
-    IN v_ciudad INT
+DELIMITER //
+
+CREATE PROCEDURE registrar_propiedad_segura(
+    IN p_direccion VARCHAR(100),
+    IN p_precio DECIMAL(12,2),
+    IN p_tipo INT,
+    IN p_estado INT,
+    IN p_ciudad INT
 )
 BEGIN
-    -- Variables para captura de error
-    DECLARE v_sqlstate CHAR(5);
-    DECLARE v_errno INT;
-    DECLARE v_mensaje TEXT;
+    DECLARE error_sql CHAR(5);
+    DECLARE codigo_sql INT;
+    DECLARE mensaje_sql TEXT;
+    DECLARE existe INT DEFAULT 0;
 
-    -- Manejador de errores
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
         GET DIAGNOSTICS CONDITION 1
-            v_sqlstate = RETURNED_SQLSTATE,
-            v_errno    = MYSQL_ERRNO,
-            v_mensaje  = MESSAGE_TEXT;
+            error_sql = RETURNED_SQLSTATE,
+            codigo_sql = MYSQL_ERRNO,
+            mensaje_sql = MESSAGE_TEXT;
 
         INSERT INTO logs_error (
-            tabla_afectada,
-            procedimiento,
-            tipo_objeto,
-            codigo_error,
-            mensaje,
-            fecha_registro
+            tabla_afectada, procedimiento, tipo_objeto,
+            codigo_error, mensaje, fecha_registro
         )
         VALUES (
             'propiedad',
-            'sp_registrar_propiedad_controlado',
+            'registrar_propiedad_segura',
             'PROCEDURE',
-            v_errno,
-            v_mensaje,
+            codigo_sql,
+            mensaje_sql,
             NOW()
         );
 
         RESIGNAL;
     END;
 
-    -- Inserción principal
-    INSERT INTO propiedad (
-        direccion,
-        precio,
-        id_tipo_propiedad,
-        id_estado_propiedad,
-        id_ciudad
-    )
-    VALUES (
-        v_direccion,
-        v_precio,
-        v_tipo_propiedad,
-        v_estado_propiedad,
-        v_ciudad
-    );
+    IF p_precio <= 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'El precio de la propiedad debe ser mayor a cero';
+    END IF;
 
-END$$
+    IF p_direccion IS NULL OR TRIM(p_direccion) = '' THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'La direccion no puede estar vacia';
+    END IF;
+
+    SELECT COUNT(*) INTO existe FROM tipo_propiedad WHERE id_tipo_propiedad = p_tipo;
+    IF existe = 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'El tipo de propiedad indicado no existe';
+    END IF;
+
+    SET existe = 0;
+    SELECT COUNT(*) INTO existe FROM ciudad WHERE id_ciudad = p_ciudad;
+    IF existe = 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'La ciudad indicada no existe en el sistema';
+    END IF;
+
+    INSERT INTO propiedad (direccion, precio, id_tipo_propiedad, id_estado_propiedad, id_ciudad)
+    VALUES (p_direccion, p_precio, p_tipo, p_estado, p_ciudad);
+
+END //
 
 DELIMITER ;
